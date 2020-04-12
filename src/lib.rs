@@ -1,3 +1,17 @@
+//! This is an implementation of Redis's RESP 2.0 protocol (as defined by [the
+//! spec](https://redis.io/topics/protocol)).
+//!
+//! Benefits:
+//! - Parsing is fast by avoiding unnecessary copies.
+//! - All failures are returned as explicit errors.
+//!
+//! Issues:
+//! - Moving and cloning a RESP object is difficult because it's a reference to an underlying
+//! buffer.
+//! - The parser expects the buffer to include the full RESP message which may make parsing large
+//! or incomplete messages more difficult.
+//! - There's likely some excessive bounds checking that could be optimized away from the dumping
+//! logic.
 use std::num;
 use std::str;
 
@@ -26,6 +40,7 @@ const INTEGER_BYTE: u8 = b':';
 const BULK_STRING_BYTE: u8 = b'$';
 const ARRAY_BYTE: u8 = b'*';
 
+/// Parses a RESP object from a buffer, returning the number of bytes read.
 pub fn parse(buf: &[u8]) -> Result<(usize, RESP), ParseError> {
     parse_offset(&buf, 0)
 }
@@ -94,11 +109,12 @@ pub enum DumpError {
     BufTooSmall,
 }
 
+/// Encodes a RESP object to a buffer, returning the numbers of bytes written.
 pub fn dump(resp: &RESP, buf: &mut [u8]) -> Result<usize, DumpError> {
     dump_offset(resp, buf, 0)
 }
 
-pub fn dump_offset(resp: &RESP, buf: &mut [u8], offset: usize) -> Result<usize, DumpError> {
+fn dump_offset(resp: &RESP, buf: &mut [u8], offset: usize) -> Result<usize, DumpError> {
     match resp {
         RESP::SimpleString(s) => write_line(buf, offset, SIMPLE_STRING_BYTE, s.as_bytes()),
         RESP::Error(s) => write_line(buf, offset, ERROR_BYTE, s.as_bytes()),
@@ -107,7 +123,7 @@ pub fn dump_offset(resp: &RESP, buf: &mut [u8], offset: usize) -> Result<usize, 
             let bytes = s.as_bytes();
             let len = bytes.len().to_string();
             let mut n = write_line(buf, offset, BULK_STRING_BYTE, len.as_bytes())?;
-            n += write_bytes(buf, offset + n, s.as_bytes())?;
+            n += write_bytes(buf, offset + n, bytes)?;
             n += write_bytes(buf, offset + n, b"\r\n")?;
             Ok(n)
         }
