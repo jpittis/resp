@@ -100,31 +100,13 @@ pub fn dump(resp: &RESP, buf: &mut [u8]) -> Result<usize, DumpError> {
 
 pub fn dump_offset(resp: &RESP, buf: &mut [u8], offset: usize) -> Result<usize, DumpError> {
     match resp {
-        RESP::SimpleString(s) => {
-            let mut n = write_bytes(buf, offset, b"+")?;
-            n += write_bytes(buf, offset + n, s.as_bytes())?;
-            n += write_bytes(buf, offset + n, b"\r\n")?;
-            Ok(n)
-        }
-        RESP::Error(s) => {
-            let mut n = write_bytes(buf, offset, b"-")?;
-            n += write_bytes(buf, offset + n, s.as_bytes())?;
-            n += write_bytes(buf, offset + n, b"\r\n")?;
-            Ok(n)
-        }
-        RESP::Integer(i) => {
-            let int = i.to_string();
-            let mut n = write_bytes(buf, offset, b":")?;
-            n += write_bytes(buf, offset + n, int.as_bytes())?;
-            n += write_bytes(buf, offset + n, b"\r\n")?;
-            Ok(n)
-        }
+        RESP::SimpleString(s) => write_line(buf, offset, SIMPLE_STRING_BYTE, s.as_bytes()),
+        RESP::Error(s) => write_line(buf, offset, ERROR_BYTE, s.as_bytes()),
+        RESP::Integer(i) => write_line(buf, offset, INTEGER_BYTE, i.to_string().as_bytes()),
         RESP::BulkString(s) => {
             let bytes = s.as_bytes();
             let len = bytes.len().to_string();
-            let mut n = write_bytes(buf, offset, b"$")?;
-            n += write_bytes(buf, offset + n, len.as_bytes())?;
-            n += write_bytes(buf, offset + n, b"\r\n")?;
+            let mut n = write_line(buf, offset, BULK_STRING_BYTE, len.as_bytes())?;
             n += write_bytes(buf, offset + n, s.as_bytes())?;
             n += write_bytes(buf, offset + n, b"\r\n")?;
             Ok(n)
@@ -132,9 +114,7 @@ pub fn dump_offset(resp: &RESP, buf: &mut [u8], offset: usize) -> Result<usize, 
         RESP::NullBulkString => write_bytes(buf, offset, b"$-1\r\n"),
         RESP::Array(arr) => {
             let len = arr.len().to_string();
-            let mut n = write_bytes(buf, offset, b"*")?;
-            n += write_bytes(buf, offset + n, len.as_bytes())?;
-            n += write_bytes(buf, offset + n, b"\r\n")?;
+            let mut n = write_line(buf, offset, ARRAY_BYTE, len.as_bytes())?;
             for r in arr {
                 let m = dump_offset(r, buf, offset + n)?;
                 n += m;
@@ -143,6 +123,13 @@ pub fn dump_offset(resp: &RESP, buf: &mut [u8], offset: usize) -> Result<usize, 
         }
         RESP::NullArray => write_bytes(buf, offset, b"*-1\r\n"),
     }
+}
+
+fn write_line(buf: &mut [u8], offset: usize, kind: u8, bytes: &[u8]) -> Result<usize, DumpError> {
+    let mut n = write_bytes(buf, offset, &[kind])?;
+    n += write_bytes(buf, offset + n, bytes)?;
+    n += write_bytes(buf, offset + n, b"\r\n")?;
+    Ok(n)
 }
 
 fn write_bytes(buf: &mut [u8], offset: usize, bytes: &[u8]) -> Result<usize, DumpError> {
