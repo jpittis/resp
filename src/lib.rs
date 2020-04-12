@@ -2,13 +2,13 @@ use std::num;
 use std::str;
 
 #[derive(Debug, PartialEq)]
-pub enum RESP {
-    SimpleString(String),
-    Error(String),
+pub enum RESP<'a> {
+    SimpleString(&'a str),
+    Error(&'a str),
     Integer(i64),
-    BulkString(String),
+    BulkString(&'a str),
     NullBulkString,
-    Array(Vec<RESP>),
+    Array(Vec<RESP<'a>>),
     NullArray,
 }
 
@@ -53,7 +53,7 @@ fn parse_offset(buf: &[u8], offset: usize) -> Result<(usize, RESP), ParseError> 
             }
             let s = str::from_utf8(&buf[offset + n + 1..offset + n + 1 + len as usize])
                 .map_err(ParseError::Utf8Error)?;
-            Ok((n + 1 + len as usize + 2, RESP::BulkString(s.to_string())))
+            Ok((n + 1 + len as usize + 2, RESP::BulkString(s)))
         }
         ARRAY_BYTE => {
             let (n, line) = read_line(buf, offset + 1)?;
@@ -74,7 +74,7 @@ fn parse_offset(buf: &[u8], offset: usize) -> Result<(usize, RESP), ParseError> 
     }
 }
 
-fn read_line(buf: &[u8], offset: usize) -> Result<(usize, String), ParseError> {
+fn read_line(buf: &[u8], offset: usize) -> Result<(usize, &str), ParseError> {
     let mut current = 0;
     loop {
         if current + 1 >= buf.len() {
@@ -83,7 +83,7 @@ fn read_line(buf: &[u8], offset: usize) -> Result<(usize, String), ParseError> {
         if buf[offset + current] == b'\r' && buf[offset + current + 1] == b'\n' {
             let line =
                 str::from_utf8(&buf[offset..offset + current]).map_err(ParseError::Utf8Error)?;
-            return Ok((current + 2, line.to_string()));
+            return Ok((current + 2, line));
         }
         current += 1;
     }
@@ -147,30 +147,25 @@ mod tests {
     #[test]
     fn test_parse_and_dump() {
         let test_cases: Vec<(&[u8], RESP)> = vec![
-            (b"+OK\r\n", RESP::SimpleString("OK".to_string())),
-            (
-                b"-Error message\r\n",
-                RESP::Error("Error message".to_string()),
-            ),
+            (b"+OK\r\n", RESP::SimpleString("OK")),
+            (b"-Error message\r\n", RESP::Error("Error message")),
             (b":44\r\n", RESP::Integer(44)),
-            (b"$6\r\nfoobar\r\n", RESP::BulkString("foobar".to_string())),
-            (b"$0\r\n\r\n", RESP::BulkString("".to_string())),
+            (b"$6\r\nfoobar\r\n", RESP::BulkString("foobar")),
+            (b"$0\r\n\r\n", RESP::BulkString("")),
             (b"$-1\r\n", RESP::NullBulkString),
             (
                 b"*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$1\r\n1\r\n",
                 RESP::Array(vec![
-                    RESP::BulkString("set".to_string()),
-                    RESP::BulkString("foo".to_string()),
-                    RESP::BulkString("1".to_string()),
+                    RESP::BulkString("set"),
+                    RESP::BulkString("foo"),
+                    RESP::BulkString("1"),
                 ]),
             ),
             (b"*0\r\n", RESP::Array(vec![])),
             (b"*-1\r\n", RESP::NullArray),
             (
                 b"*1\r\n*1\r\n+nested\r\n",
-                RESP::Array(vec![RESP::Array(vec![RESP::SimpleString(
-                    "nested".to_string(),
-                )])]),
+                RESP::Array(vec![RESP::Array(vec![RESP::SimpleString("nested")])]),
             ),
         ];
         let mut buf: Vec<u8> = vec![0; 4096];
