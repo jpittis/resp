@@ -101,54 +101,56 @@ pub fn dump(resp: &RESP, buf: &mut [u8]) -> Result<usize, DumpError> {
 pub fn dump_offset(resp: &RESP, buf: &mut [u8], offset: usize) -> Result<usize, DumpError> {
     match resp {
         RESP::SimpleString(s) => {
-            buf[offset..].copy_from_slice(b"+");
-            buf[offset + 1..].copy_from_slice(s.as_bytes());
-            buf[offset + s.as_bytes().len()..].copy_from_slice(b"\r\n");
-            Ok(1 + s.as_bytes().len() + 2)
+            let mut n = write_bytes(buf, offset, b"+")?;
+            n += write_bytes(buf, offset + n, s.as_bytes())?;
+            n += write_bytes(buf, offset + n, b"\r\n")?;
+            Ok(n)
         }
         RESP::Error(s) => {
-            buf[offset..].copy_from_slice(b"-");
-            buf[offset + 1..].copy_from_slice(s.as_bytes());
-            buf[offset + s.as_bytes().len()..].copy_from_slice(b"\r\n");
-            Ok(1 + s.as_bytes().len() + 2)
+            let mut n = write_bytes(buf, offset, b"-")?;
+            n += write_bytes(buf, offset + n, s.as_bytes())?;
+            n += write_bytes(buf, offset + n, b"\r\n")?;
+            Ok(n)
         }
         RESP::Integer(i) => {
-            let s = i.to_string();
-            buf[offset..].copy_from_slice(b":");
-            buf[offset + 1..].copy_from_slice(s.as_bytes());
-            buf[offset + s.as_bytes().len()..].copy_from_slice(b"\r\n");
-            Ok(1 + s.as_bytes().len() + 2)
+            let int = i.to_string();
+            let mut n = write_bytes(buf, offset, b":")?;
+            n += write_bytes(buf, offset + n, int.as_bytes())?;
+            n += write_bytes(buf, offset + n, b"\r\n")?;
+            Ok(n)
         }
         RESP::BulkString(s) => {
-            let s1 = s.as_bytes().len().to_string();
-            buf[offset..].copy_from_slice(b"$");
-            buf[offset + 1..].copy_from_slice(s1.as_bytes());
-            buf[offset + s1.as_bytes().len()..].copy_from_slice(b"\r\n");
-            buf[offset + 1..].copy_from_slice(s.as_bytes());
-            buf[offset + s.as_bytes().len()..].copy_from_slice(b"\r\n");
-            Ok(1 + s1.as_bytes().len() + 2 + s.as_bytes().len() + 2)
+            let bytes = s.as_bytes();
+            let len = bytes.len().to_string();
+            let mut n = write_bytes(buf, offset, b"$")?;
+            n += write_bytes(buf, offset + n, len.as_bytes())?;
+            n += write_bytes(buf, offset + n, b"\r\n")?;
+            n += write_bytes(buf, offset + n, s.as_bytes())?;
+            n += write_bytes(buf, offset + n, b"\r\n")?;
+            Ok(n)
         }
-        RESP::NullBulkString => {
-            buf[offset..].copy_from_slice(b"$-1\r\n");
-            Ok(5)
-        }
+        RESP::NullBulkString => write_bytes(buf, offset, b"$-1\r\n"),
         RESP::Array(arr) => {
-            let s1 = arr.len().to_string();
-            buf[offset..].copy_from_slice(b"$");
-            buf[offset + 1..].copy_from_slice(s1.as_bytes());
-            buf[offset + s1.as_bytes().len()..].copy_from_slice(b"\r\n");
-            let mut n = 1 + s1.as_bytes().len() + 2;
+            let len = arr.len().to_string();
+            let mut n = write_bytes(buf, offset, b"*")?;
+            n += write_bytes(buf, offset + n, len.as_bytes())?;
+            n += write_bytes(buf, offset + n, b"\r\n")?;
             for r in arr {
                 let m = dump_offset(r, buf, offset + n)?;
                 n += m;
             }
             Ok(n)
         }
-        RESP::NullArray => {
-            buf[offset..].copy_from_slice(b"*-1\r\n");
-            Ok(5)
-        }
+        RESP::NullArray => write_bytes(buf, offset, b"*-1\r\n"),
     }
+}
+
+fn write_bytes(buf: &mut [u8], offset: usize, bytes: &[u8]) -> Result<usize, DumpError> {
+    if offset + bytes.len() > buf.len() {
+        return Err(DumpError::BufTooSmall);
+    }
+    buf[offset..].copy_from_slice(bytes);
+    Ok(bytes.len())
 }
 
 #[cfg(test)]
