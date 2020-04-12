@@ -158,37 +158,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse() {
-        assert_eq!(
-            parse(b"+OK\r\n"),
-            Ok((5, RESP::SimpleString("OK".to_string())))
-        );
-        assert_eq!(
-            parse(b"-Error message\r\n"),
-            Ok((16, RESP::Error("Error message".to_string())))
-        );
-        assert_eq!(parse(b":44\r\n"), Ok((5, RESP::Integer(44))));
-        assert_eq!(
-            parse(b"$6\r\nfoobar\r\n"),
-            Ok((12, RESP::BulkString("foobar".to_string())))
-        );
-        assert_eq!(
-            parse(b"$0\r\n\r\n"),
-            Ok((6, RESP::BulkString("".to_string())))
-        );
-        assert_eq!(parse(b"$-1\r\n"), Ok((5, RESP::NullBulkString)));
-        assert_eq!(
-            parse(b"*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$1\r\n1\r\n"),
-            Ok((
-                29,
+    fn test_parse_and_dump() {
+        let test_cases: Vec<(&[u8], RESP)> = vec![
+            (b"+OK\r\n", RESP::SimpleString("OK".to_string())),
+            (
+                b"-Error message\r\n",
+                RESP::Error("Error message".to_string()),
+            ),
+            (b":44\r\n", RESP::Integer(44)),
+            (b"$6\r\nfoobar\r\n", RESP::BulkString("foobar".to_string())),
+            (b"$0\r\n\r\n", RESP::BulkString("".to_string())),
+            (b"$-1\r\n", RESP::NullBulkString),
+            (
+                b"*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$1\r\n1\r\n",
                 RESP::Array(vec![
                     RESP::BulkString("set".to_string()),
                     RESP::BulkString("foo".to_string()),
-                    RESP::BulkString("1".to_string())
-                ])
-            ))
-        );
-        assert_eq!(parse(b"*0\r\n"), Ok((4, RESP::Array(vec![]))));
-        assert_eq!(parse(b"*-1\r\n"), Ok((5, RESP::NullArray)));
+                    RESP::BulkString("1".to_string()),
+                ]),
+            ),
+            (b"*0\r\n", RESP::Array(vec![])),
+            (b"*-1\r\n", RESP::NullArray),
+        ];
+        let mut buf: Vec<u8> = vec![0; 4096];
+        for (bytes, parsed) in test_cases {
+            assert_eq!(dump(&parsed, &mut buf), Ok(bytes.len()));
+            assert_eq!(&buf[0..bytes.len()], bytes);
+            assert_eq!(parse(bytes), Ok((bytes.len(), parsed)));
+        }
     }
 }
