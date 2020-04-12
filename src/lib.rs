@@ -179,6 +179,12 @@ mod tests {
             ),
             (b"*0\r\n", RESP::Array(vec![])),
             (b"*-1\r\n", RESP::NullArray),
+            (
+                b"*1\r\n*1\r\n+nested\r\n",
+                RESP::Array(vec![RESP::Array(vec![RESP::SimpleString(
+                    "nested".to_string(),
+                )])]),
+            ),
         ];
         let mut buf: Vec<u8> = vec![0; 4096];
         for (bytes, parsed) in test_cases {
