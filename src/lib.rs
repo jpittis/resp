@@ -149,7 +149,7 @@ fn write_bytes(buf: &mut [u8], offset: usize, bytes: &[u8]) -> Result<usize, Dum
     if offset + bytes.len() > buf.len() {
         return Err(DumpError::BufTooSmall);
     }
-    buf[offset..].copy_from_slice(bytes);
+    buf[offset..offset + bytes.len()].copy_from_slice(bytes);
     Ok(bytes.len())
 }
 
