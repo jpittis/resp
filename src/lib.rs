@@ -6,12 +6,7 @@
 //! - All failures are returned as explicit errors.
 //!
 //! Issues:
-//! - Moving and cloning a RESP object is difficult because it's a reference to an underlying
-//! buffer.
-//! - The parser expects the buffer to include the full RESP message which may make parsing large
-//! or incomplete messages more difficult.
-//! - There's likely some excessive bounds checking that could be optimized away from the dumping
-//! logic.
+//! - Parser expects full RESP message and returns errors for incomplete messages.
 use std::borrow::Cow::{self, Borrowed};
 use std::num;
 use std::str;
