@@ -12,15 +12,16 @@
 //! or incomplete messages more difficult.
 //! - There's likely some excessive bounds checking that could be optimized away from the dumping
 //! logic.
+use std::borrow::Cow::{self, Borrowed};
 use std::num;
 use std::str;
 
 #[derive(Debug, PartialEq)]
 pub enum RESP<'a> {
-    SimpleString(&'a str),
-    Error(&'a str),
+    SimpleString(Cow<'a, str>),
+    Error(Cow<'a, str>),
     Integer(i64),
-    BulkString(&'a str),
+    BulkString(Cow<'a, str>),
     NullBulkString,
     Array(Vec<RESP<'a>>),
     NullArray,
@@ -49,11 +50,11 @@ fn parse_offset(buf: &[u8], offset: usize) -> Result<(usize, RESP), ParseError> 
     match buf[offset] {
         SIMPLE_STRING_BYTE => {
             let (n, line) = read_line(buf, offset + 1)?;
-            Ok((n + 1, RESP::SimpleString(line)))
+            Ok((n + 1, RESP::SimpleString(Borrowed(line))))
         }
         ERROR_BYTE => {
             let (n, line) = read_line(buf, offset + 1)?;
-            Ok((n + 1, RESP::Error(line)))
+            Ok((n + 1, RESP::Error(Borrowed(line))))
         }
         INTEGER_BYTE => {
             let (n, line) = read_line(buf, offset + 1)?;
@@ -68,7 +69,7 @@ fn parse_offset(buf: &[u8], offset: usize) -> Result<(usize, RESP), ParseError> 
             }
             let s = str::from_utf8(&buf[offset + n + 1..offset + n + 1 + len as usize])
                 .map_err(ParseError::Utf8Error)?;
-            Ok((n + 1 + len as usize + 2, RESP::BulkString(s)))
+            Ok((n + 1 + len as usize + 2, RESP::BulkString(Borrowed(s))))
         }
         ARRAY_BYTE => {
             let (n, line) = read_line(buf, offset + 1)?;
@@ -159,29 +160,35 @@ fn write_bytes(buf: &mut [u8], offset: usize, bytes: &[u8]) -> Result<usize, Dum
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::borrow::Cow::Borrowed;
 
     #[test]
     fn test_parse_and_dump() {
         let test_cases: Vec<(&[u8], RESP)> = vec![
-            (b"+OK\r\n", RESP::SimpleString("OK")),
-            (b"-Error message\r\n", RESP::Error("Error message")),
+            (b"+OK\r\n", RESP::SimpleString(Borrowed("OK"))),
+            (
+                b"-Error message\r\n",
+                RESP::Error(Borrowed("Error message")),
+            ),
             (b":44\r\n", RESP::Integer(44)),
-            (b"$6\r\nfoobar\r\n", RESP::BulkString("foobar")),
-            (b"$0\r\n\r\n", RESP::BulkString("")),
+            (b"$6\r\nfoobar\r\n", RESP::BulkString(Borrowed("foobar"))),
+            (b"$0\r\n\r\n", RESP::BulkString(Borrowed(""))),
             (b"$-1\r\n", RESP::NullBulkString),
             (
                 b"*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$1\r\n1\r\n",
                 RESP::Array(vec![
-                    RESP::BulkString("set"),
-                    RESP::BulkString("foo"),
-                    RESP::BulkString("1"),
+                    RESP::BulkString(Borrowed("set")),
+                    RESP::BulkString(Borrowed("foo")),
+                    RESP::BulkString(Borrowed("1")),
                 ]),
             ),
             (b"*0\r\n", RESP::Array(vec![])),
             (b"*-1\r\n", RESP::NullArray),
             (
                 b"*1\r\n*1\r\n+nested\r\n",
-                RESP::Array(vec![RESP::Array(vec![RESP::SimpleString("nested")])]),
+                RESP::Array(vec![RESP::Array(vec![RESP::SimpleString(Borrowed(
+                    "nested",
+                ))])]),
             ),
         ];
         let mut buf: Vec<u8> = vec![0; 4096];
